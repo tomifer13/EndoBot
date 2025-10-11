@@ -1,24 +1,37 @@
 import { NextRequest, NextResponse } from "next/server";
 import AdmZip from "adm-zip";
-import duckdb from "duckdb";
+import { createRequire } from "node:module";
 import * as XLSX from "xlsx";
+import type DuckDB from "duckdb";
 
 const DB_PATH = "/tmp/analytics.duckdb"; // TODO: move to persistent storage (e.g., Vercel Blob) for production
 const MAX_TOTAL_ROWS = 2_000_000;
 const INSERT_CHUNK_SIZE = 1_000;
 
+const require = createRequire(import.meta.url);
+
+let duckdbModule: DuckDB | null = null;
+
+function getDuckDB(): DuckDB {
+  if (!duckdbModule) {
+    duckdbModule = require("duckdb") as DuckDB;
+  }
+  return duckdbModule;
+}
+
 export const runtime = "nodejs";
 
-let database: duckdb.Database | null = null;
+let database: DuckDB.Database | null = null;
 
-function getDatabase(): duckdb.Database {
+function getDatabase(): DuckDB.Database {
+  const duckdb = getDuckDB();
   if (!database) {
     database = new duckdb.Database(DB_PATH);
   }
   return database;
 }
 
-function connect(): Promise<duckdb.Connection> {
+function connect(): Promise<DuckDB.Connection> {
   return new Promise((resolve, reject) => {
     getDatabase().connect((err, connection) => {
       if (err || !connection) {
@@ -30,7 +43,7 @@ function connect(): Promise<duckdb.Connection> {
   });
 }
 
-function run(connection: duckdb.Connection, sql: string, params: unknown[] = []): Promise<void> {
+function run(connection: DuckDB.Connection, sql: string, params: unknown[] = []): Promise<void> {
   return new Promise((resolve, reject) => {
     connection.run(sql, params, (err) => {
       if (err) {
@@ -42,7 +55,7 @@ function run(connection: duckdb.Connection, sql: string, params: unknown[] = [])
   });
 }
 
-function all<T = Record<string, unknown>>(connection: duckdb.Connection, sql: string, params: unknown[] = []): Promise<T[]> {
+function all<T = Record<string, unknown>>(connection: DuckDB.Connection, sql: string, params: unknown[] = []): Promise<T[]> {
   return new Promise((resolve, reject) => {
     connection.all(sql, params, (err, rows: T[]) => {
       if (err) {
@@ -54,7 +67,7 @@ function all<T = Record<string, unknown>>(connection: duckdb.Connection, sql: st
   });
 }
 
-function prepare(connection: duckdb.Connection, sql: string): Promise<duckdb.Statement> {
+function prepare(connection: DuckDB.Connection, sql: string): Promise<DuckDB.Statement> {
   return new Promise((resolve, reject) => {
     connection.prepare(sql, (err, statement) => {
       if (err || !statement) {
@@ -66,7 +79,7 @@ function prepare(connection: duckdb.Connection, sql: string): Promise<duckdb.Sta
   });
 }
 
-function finalize(statement: duckdb.Statement | null | undefined): void {
+function finalize(statement: DuckDB.Statement | null | undefined): void {
   if (!statement) {
     return;
   }
