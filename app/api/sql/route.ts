@@ -1,23 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
-import duckdb from "duckdb";
+import { createRequire } from "node:module";
+import type DuckDB from "duckdb";
 
 const DB_PATH = "/tmp/analytics.duckdb"; // TODO: move to persistent storage (e.g., Vercel Blob) for production
 const MAX_ROWS = 50_000;
 const QUERY_TIMEOUT_MS = 10_000;
 const FORBIDDEN_PATTERN = /\b(ALTER|ATTACH|COPY|CREATE\s+TABLE|DELETE|DROP|GRANT|INSERT|MERGE|PRAGMA|REPLACE|TRUNCATE|UPDATE|VACUUM|WRITE|SET)\b/i;
 
+const require = createRequire(import.meta.url);
+
+let duckdbModule: DuckDB | null = null;
+
+function getDuckDB(): DuckDB {
+  if (!duckdbModule) {
+    duckdbModule = require("duckdb") as DuckDB;
+  }
+  return duckdbModule;
+}
+
 export const runtime = "nodejs";
 
-let database: duckdb.Database | null = null;
+let database: DuckDB.Database | null = null;
 
-function getDatabase(): duckdb.Database {
+function getDatabase(): DuckDB.Database {
+  const duckdb = getDuckDB();
   if (!database) {
     database = new duckdb.Database(DB_PATH);
   }
   return database;
 }
 
-function connect(): Promise<duckdb.Connection> {
+function connect(): Promise<DuckDB.Connection> {
   return new Promise((resolve, reject) => {
     getDatabase().connect((err, connection) => {
       if (err || !connection) {
@@ -29,7 +42,7 @@ function connect(): Promise<duckdb.Connection> {
   });
 }
 
-function prepare(connection: duckdb.Connection, sql: string): Promise<duckdb.Statement> {
+function prepare(connection: DuckDB.Connection, sql: string): Promise<DuckDB.Statement> {
   return new Promise((resolve, reject) => {
     connection.prepare(sql, (err, statement) => {
       if (err || !statement) {
@@ -41,7 +54,7 @@ function prepare(connection: duckdb.Connection, sql: string): Promise<duckdb.Sta
   });
 }
 
-function all(statement: duckdb.Statement): Promise<Record<string, unknown>[]> {
+function all(statement: DuckDB.Statement): Promise<Record<string, unknown>[]> {
   return new Promise((resolve, reject) => {
     statement.all((err, rows) => {
       if (err) {
@@ -53,7 +66,7 @@ function all(statement: duckdb.Statement): Promise<Record<string, unknown>[]> {
   });
 }
 
-function finalize(statement: duckdb.Statement | null | undefined): void {
+function finalize(statement: DuckDB.Statement | null | undefined): void {
   if (!statement) {
     return;
   }
@@ -111,7 +124,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const connection = await connect();
-    let statement: duckdb.Statement | null = null;
+    let statement: DuckDB.Statement | null = null;
 
     try {
       statement = await prepare(connection, sanitized);
