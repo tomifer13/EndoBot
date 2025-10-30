@@ -7,7 +7,6 @@ import {
   PLACEHOLDER_INPUT,
   GREETING,
   CREATE_SESSION_ENDPOINT,
-  WORKFLOW_ID,
   getThemeConfig,
 } from "@/lib/config";
 import { ErrorOverlay } from "./ErrorOverlay";
@@ -20,6 +19,7 @@ export type FactAction = {
 };
 
 type ChatKitPanelProps = {
+  workflowId: string;
   theme: ColorScheme;
   onWidgetAction: (action: FactAction) => Promise<void>;
   onResponseEnd: () => void;
@@ -44,6 +44,7 @@ const createInitialErrors = (): ErrorState => ({
 });
 
 export function ChatKitPanel({
+  workflowId,
   theme,
   onWidgetAction,
   onResponseEnd,
@@ -132,18 +133,20 @@ export function ChatKitPanel({
   }, [scriptStatus, setErrorState]);
 
   const isWorkflowConfigured = Boolean(
-    WORKFLOW_ID && !WORKFLOW_ID.startsWith("wf_replace")
+    workflowId && !workflowId.startsWith("wf_replace")
   );
+  const workflowErrorMessage =
+    "Configure a valid workflow id for the selected assistant.";
 
   useEffect(() => {
     if (!isWorkflowConfigured && isMountedRef.current) {
       setErrorState({
-        session: "Set NEXT_PUBLIC_CHATKIT_WORKFLOW_ID in your .env.local file.",
+        session: workflowErrorMessage,
         retryable: false,
       });
       setIsInitializingSession(false);
     }
-  }, [isWorkflowConfigured, setErrorState]);
+  }, [isWorkflowConfigured, setErrorState, workflowErrorMessage]);
 
   const handleResetChat = useCallback(() => {
     processedFacts.current.clear();
@@ -157,19 +160,26 @@ export function ChatKitPanel({
     setWidgetInstanceKey((prev) => prev + 1);
   }, []);
 
+  const previousWorkflowIdRef = useRef(workflowId);
+  useEffect(() => {
+    if (previousWorkflowIdRef.current !== workflowId) {
+      previousWorkflowIdRef.current = workflowId;
+      handleResetChat();
+    }
+  }, [workflowId, handleResetChat]);
+
   const getClientSecret = useCallback(
     async (currentSecret: string | null) => {
       if (isDev) {
         console.info("[ChatKitPanel] getClientSecret invoked", {
           currentSecretPresent: Boolean(currentSecret),
-          workflowId: WORKFLOW_ID,
+          workflowId,
           endpoint: CREATE_SESSION_ENDPOINT,
         });
       }
 
       if (!isWorkflowConfigured) {
-        const detail =
-          "Set NEXT_PUBLIC_CHATKIT_WORKFLOW_ID in your .env.local file.";
+        const detail = workflowErrorMessage;
         if (isMountedRef.current) {
           setErrorState({ session: detail, retryable: false });
           setIsInitializingSession(false);
@@ -191,7 +201,7 @@ export function ChatKitPanel({
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            workflow: { id: WORKFLOW_ID },
+            workflow: { id: workflowId },
             chatkit_configuration: {
               // enable attachments
               file_upload: {
@@ -224,7 +234,10 @@ export function ChatKitPanel({
         }
 
         if (!response.ok) {
-          const detail = extractErrorDetail(data, response.statusText);
+          const detail = extractErrorDetail(
+            data,
+            response.statusText || workflowErrorMessage
+          );
           console.error("Create session request failed", {
             status: response.status,
             body: data,
@@ -258,7 +271,7 @@ export function ChatKitPanel({
         }
       }
     },
-    [isWorkflowConfigured, setErrorState]
+    [isWorkflowConfigured, setErrorState, workflowErrorMessage, workflowId]
   );
 
   const chatkit = useChatKit({
@@ -339,7 +352,7 @@ export function ChatKitPanel({
       hasControl: Boolean(chatkit.control),
       scriptStatus,
       hasError: Boolean(blockingError),
-      workflowId: WORKFLOW_ID,
+      workflowId,
     });
   }
 
