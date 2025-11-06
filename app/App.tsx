@@ -5,7 +5,7 @@ import { ChatKitPanel, type FactAction } from "@/components/ChatKitPanel";
 import { useColorScheme } from "@/hooks/useColorScheme";
 
 export default function App() {
-  const { scheme, setScheme } = useColorScheme();
+  const { scheme, setScheme } = useColorScheme("light");
 
   const handleWidgetAction = useCallback(async (action: FactAction) => {
     if (process.env.NODE_ENV !== "production") {
