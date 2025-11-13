@@ -52,7 +52,7 @@ type WidgetAction = {
   payload?: Record<string, unknown>;
 };
 
-type SidebarMode = "prompts" | "tokens";
+type SidebarMode = "none" | "prompts" | "tokens";
 
 type ChatKitLogEvent = {
   name?: string;
@@ -60,6 +60,11 @@ type ChatKitLogEvent = {
 };
 
 type UsageEvent = ResponseUsage & { responseId?: string | null };
+type ResponseEndDetail = {
+  usage?: Record<string, unknown>;
+  model?: string;
+  response?: Record<string, unknown>;
+};
 
 const isBrowser = typeof window !== "undefined";
 const isDev = process.env.NODE_ENV !== "production";
@@ -398,20 +403,29 @@ export function ChatKitPanel({
 
       return { success: false };
     },
-    onResponseEnd: () => {
+    onResponseEnd: (event: unknown) => {
+      const detail = event as ResponseEndDetail | undefined;
       responseCountRef.current += 1;
-      const [latestUsage, ...rest] = pendingUsageQueueRef.current;
-      pendingUsageQueueRef.current = rest;
-      const usagePayload = latestUsage
-        ? {
-            model: latestUsage.model,
-            promptTokens: latestUsage.promptTokens,
-            completionTokens: latestUsage.completionTokens,
-            totalTokens: latestUsage.totalTokens,
-          }
-        : undefined;
+      let usagePayload = extractUsageFromResponse(detail);
+      const usageFromDetail = Boolean(usagePayload);
+      if (!usagePayload && pendingUsageQueueRef.current.length > 0) {
+        const [latestUsage, ...rest] = pendingUsageQueueRef.current;
+        pendingUsageQueueRef.current = rest;
+        usagePayload = latestUsage
+          ? {
+              model: latestUsage.model,
+              promptTokens: latestUsage.promptTokens,
+              completionTokens: latestUsage.completionTokens,
+              totalTokens: latestUsage.totalTokens,
+            }
+          : undefined;
+      }
       if (usagePayload) {
         applyUsageToState(usagePayload);
+        if (usageFromDetail) {
+          pendingUsageQueueRef.current = [];
+          processedResponseIdsRef.current.clear();
+        }
       }
       onResponseEnd(
         sessionIdRef.current ?? undefined,
@@ -475,19 +489,23 @@ export function ChatKitPanel({
 
   return (
     <div className="flex h-[90vh] w-full gap-4">
-      <div className="hidden w-72 shrink-0 flex-col lg:flex">
-        <div className="mb-3 flex flex-row items-center gap-2 bg-white p-1 rounded-full shadow">
+      <div className="hidden lg:flex flex-col w-72 shrink-0">
+        <div className="flex flex-row items-center justify-end mb-3 gap-2">
+          {/* Prompt-Manager Toggle */}
           <button
             type="button"
-            onClick={() => setSidebarMode("prompts")}
-            className={`w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 transition-colors ${
-              sidebarMode === "prompts"
+            onClick={() =>
+              setSidebarMode(
+                sidebarMode === "prompts" ? "none" : "prompts"
+              )
+            }
+            className={`w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 transition-colors 
+              ${sidebarMode === "prompts"
                 ? "ring-2 ring-[#bb0a30] bg-gray-200"
-                : "hover:bg-gray-200"
-            }`}
+                : "hover:bg-gray-200"}
+            `}
             aria-label="Prompt-Manager"
           >
-            {/* Book/Open Book icon for prompts */}
             <svg
               className={`w-5 h-5 ${sidebarMode === "prompts" ? "text-[#bb0a30]" : "text-[#bb0a30]/80"}`}
               fill="none"
@@ -502,17 +520,21 @@ export function ChatKitPanel({
               />
             </svg>
           </button>
+          {/* Token-Usage Toggle */}
           <button
             type="button"
-            onClick={() => setSidebarMode("tokens")}
-            className={`w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 transition-colors ${
-              sidebarMode === "tokens"
+            onClick={() =>
+              setSidebarMode(
+                sidebarMode === "tokens" ? "none" : "tokens"
+              )
+            }
+            className={`w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 transition-colors 
+              ${sidebarMode === "tokens"
                 ? "ring-2 ring-[#bb0a30] bg-gray-200"
-                : "hover:bg-gray-200"
-            }`}
+                : "hover:bg-gray-200"}
+            `}
             aria-label="Token-Nutzung"
           >
-            {/* Pie Chart icon for token usage */}
             <svg
               className={`w-5 h-5 ${sidebarMode === "tokens" ? "text-[#bb0a30]" : "text-[#bb0a30]/80"}`}
               fill="none"
@@ -528,13 +550,20 @@ export function ChatKitPanel({
             </svg>
           </button>
         </div>
-        <div className="flex-1 overflow-hidden rounded-2xl bg-white shadow">
-          {sidebarMode === "prompts" ? (
+        {sidebarMode === "prompts" && (
+          <div className="flex-1 overflow-hidden rounded-2xl bg-white shadow">
             <PromptSidebar onInsert={handleInsertPrompt} className="h-full" />
-          ) : (
+          </div>
+        )}
+        {sidebarMode === "tokens" && (
+          <div className="flex-1 overflow-hidden rounded-2xl bg-white shadow">
             <TokenUsagePanel summary={usageSummary} />
-          )}
-        </div>
+          </div>
+        )}
+        {sidebarMode !== "prompts" && sidebarMode !== "tokens" && (
+          <div className="flex-1 flex items-center justify-center text-gray-300 text-sm bg-transparent">
+          </div>
+        )}
       </div>
 
       <div className="relative flex flex-1 flex-col overflow-hidden rounded-2xl bg-white pb-8 shadow-xl transition-colors">
@@ -599,6 +628,49 @@ function extractErrorDetail(
   if (typeof payload.message === "string") return payload.message;
 
   return fallback;
+}
+
+function extractUsageFromResponse(detail?: ResponseEndDetail): ResponseUsage | undefined {
+  if (!detail) return undefined;
+  const usageSource =
+    (isRecord(detail.usage) && detail.usage) ||
+    (isRecord(detail.response) && isRecord(detail.response.usage)
+      ? detail.response.usage
+      : undefined);
+  if (!usageSource) return undefined;
+
+  const model =
+    (typeof detail.model === "string" && detail.model) ||
+    (isRecord(detail.response) && typeof detail.response.model === "string"
+      ? detail.response.model
+      : undefined) ||
+    "unbekanntes-Modell";
+
+  const promptTokens = readNumber(
+    usageSource,
+    "prompt_tokens",
+    "input_tokens",
+    "input_token_count"
+  );
+  const completionTokens = readNumber(
+    usageSource,
+    "completion_tokens",
+    "output_tokens",
+    "output_token_count"
+  );
+  const totalTokens =
+    readNumber(usageSource, "total_tokens", "token_count") ||
+    promptTokens + completionTokens;
+
+  if (!totalTokens) return undefined;
+
+  return {
+    model,
+    promptTokens: promptTokens || Math.max(totalTokens - completionTokens, 0),
+    completionTokens:
+      completionTokens || Math.max(totalTokens - promptTokens, 0),
+    totalTokens,
+  };
 }
 
 function extractUsageEvent(entry?: ChatKitLogEvent): UsageEvent | null {
