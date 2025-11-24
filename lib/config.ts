@@ -15,7 +15,7 @@ export const STARTER_PROMPTS: StartScreenPrompt[] = [
 
 export const PLACEHOLDER_INPUT = "Ask anything...";
 
-export const GREETING = "How can I help you today?";
+export const GREETING = "딥레이서 챗봇이야. 무엇을 도와줄까?";
 
 export const getThemeConfig = (theme: ColorScheme): ThemeOption => ({
   color: {
