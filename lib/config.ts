@@ -7,15 +7,20 @@ export const CREATE_SESSION_ENDPOINT = "/api/create-session";
 
 export const STARTER_PROMPTS: StartScreenPrompt[] = [
   {
-    label: "What can you do?",
-    prompt: "What can you do?",
-    icon: "circle-question",
+    label: "💰 Precios",
+    prompt: "¿Cuáles son los costos de los tratamientos?",
+    icon: "circle-dollar", // Icono opcional
+  },
+  {
+    label: "📅 Agendar Cita",
+    prompt: "Quisiera información para agendar una cita.",
+    icon: "calendar",
   },
 ];
 
-export const PLACEHOLDER_INPUT = "Ask anything...";
+export const PLACEHOLDER_INPUT = "Instituto NeuroInteligente";
 
-export const GREETING = "How can I help you today?";
+export const GREETING = "¡Hola! Soy Neuro, tu asistente dental. ¿En qué puedo ayudarte hoy?";
 
 export const getThemeConfig = (theme: ColorScheme): ThemeOption => ({
   color: {
