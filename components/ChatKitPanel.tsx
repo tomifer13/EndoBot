@@ -350,6 +350,22 @@ export function ChatKitPanel({
     threadItemActions: {
       feedback: false,
     },
+
+widgets: {
+  onAction: async (action, item) => {
+    console.log("Widget action fired:", action, item);
+
+    await chatkit.sendCustomAction(
+      {
+        type: action.type,
+        payload: action.payload ?? {}
+      },
+      item?.id
+    );
+  }
+},
+
+    
     onClientTool: async (invocation: {
       name: string;
       params: Record<string, unknown>;
