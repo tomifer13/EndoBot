@@ -351,19 +351,30 @@ export function ChatKitPanel({
       feedback: false,
     },
 
-widgets: {
-  onAction: async (action, item) => {
-    console.log("Widget action fired:", action, item);
-
-    await chatkit.sendCustomAction(
-      {
-        type: action.type,
-        payload: action.payload ?? {}
+    widgets: {
+      onAction: async (action, item) => {
+        console.log("Widget action fired:", action, item);
+    
+        // Get instructions for the currently shown exercise
+        if (action.type === "exercise.details") {
+          await chatkit.sendUserMessage({
+            text: `Get instructions for exercise ${action.payload?.id ?? ""}`,
+            reply: item?.id ?? undefined, // threads it under the card (optional)
+          });
+          return;
+        }
+    
+        // Ask for a new shaping idea
+        if (action.type === "exercise.next") {
+          await chatkit.sendUserMessage({
+            text: "Next idea",
+            reply: item?.id ?? undefined,
+          });
+          return;
+        }
       },
-      item?.id
-    );
-  }
-},
+    },
+    
 
     
     onClientTool: async (invocation: {
