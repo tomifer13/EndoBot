@@ -1,6 +1,7 @@
 "use client";
 /* comment for testing */
 
+import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChatKit, useChatKit } from "@openai/chatkit-react";
 import {
@@ -141,6 +142,7 @@ export function ChatKitPanel({
       : "pending"
   );
   const [widgetInstanceKey, setWidgetInstanceKey] = useState(0);
+  const [isStartScreenActive, setIsStartScreenActive] = useState(true);
 
   const setErrorState = useCallback((updates: Partial<ErrorState>) => {
     setErrors((current) => ({ ...current, ...updates }));
@@ -235,6 +237,7 @@ export function ChatKitPanel({
     setIsInitializingSession(true);
     setErrors(createInitialErrors());
     setWidgetInstanceKey((prev) => prev + 1);
+    setIsStartScreenActive(true);
   }, []);
 
   const getClientSecret = useCallback(
@@ -454,8 +457,9 @@ widgets: {
     onResponseStart: () => {
       setErrorState({ integration: null, retryable: false });
     },
-    onThreadChange: () => {
+    onThreadChange: ({ threadId }: { threadId: string | null }) => {
       processedFacts.current.clear();
+      setIsStartScreenActive(threadId === null);
     },
     onError: ({ error }: { error: unknown }) => {
       // Note that Chatkit UI handles errors for your users.
@@ -479,6 +483,20 @@ widgets: {
 
   return (
     <div className="relative flex h-dvh w-full rounded-2xl flex-col overflow-hidden bg-white shadow-sm transition-colors dark:bg-slate-900">
+      {isStartScreenActive && !blockingError && !isInitializingSession && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center">
+          <div className="mb-32">
+            <Image
+              src="/icons/icon-512.png"
+              alt="Shape-Mate icon"
+              width={128}
+              height={128}
+              priority
+              className="h-24 w-24 rounded-xl drop-shadow-lg"
+            />
+          </div>
+        </div>
+      )}
       <ChatKit
         key={widgetInstanceKey}
         control={chatkit.control}
