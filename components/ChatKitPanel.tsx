@@ -3,9 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChatKit, useChatKit } from "@openai/chatkit-react";
 import {
-  STARTER_PROMPTS,
-  PLACEHOLDER_INPUT,
-  GREETING,
+  START_SCREEN,
+  COMPOSER_CONFIG,
   CREATE_SESSION_ENDPOINT,
   WORKFLOW_ID,
   getThemeConfig,
@@ -263,21 +262,9 @@ export function ChatKitPanel({
 
   const chatkit = useChatKit({
     api: { getClientSecret },
-    theme: {
-      colorScheme: theme,
-      ...getThemeConfig(theme),
-    },
-    startScreen: {
-      greeting: GREETING,
-      prompts: STARTER_PROMPTS,
-    },
-    composer: {
-      placeholder: PLACEHOLDER_INPUT,
-      attachments: {
-        // Enable attachments
-        enabled: true,
-      },
-    },
+    theme: getThemeConfig(theme),
+    startScreen: START_SCREEN,
+    composer: COMPOSER_CONFIG,
     threadItemActions: {
       feedback: false,
     },
@@ -344,7 +331,7 @@ export function ChatKitPanel({
   }
 
   return (
-    <div className="relative pb-8 flex h-[90vh] w-full rounded-2xl flex-col overflow-hidden bg-white shadow-sm transition-colors dark:bg-slate-900">
+    <div className="relative flex h-[100vh] w-full flex-col overflow-hidden pb-8 transition-colors">
       <ChatKit
         key={widgetInstanceKey}
         control={chatkit.control}
