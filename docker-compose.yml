@@ -1,0 +1,14 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_CHATKIT_WORKFLOW_ID: ${NEXT_PUBLIC_CHATKIT_WORKFLOW_ID}
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      CHATKIT_API_BASE: ${CHATKIT_API_BASE}
+
