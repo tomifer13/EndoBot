@@ -9,6 +9,7 @@ import {
   CREATE_SESSION_ENDPOINT,
   WORKFLOW_ID,
   getThemeConfig,
+  HIDE_INTERIM_RESPONSES,
 } from "@/lib/config";
 import { ErrorOverlay } from "./ErrorOverlay";
 import type { ColorScheme } from "@/hooks/useColorScheme";
@@ -261,12 +262,14 @@ export function ChatKitPanel({
     [isWorkflowConfigured, setErrorState]
   );
 
-  const chatkit = useChatKit({
+  const chatkitOptions: any = {
     api: { getClientSecret },
+    // Explicit theme config
     theme: {
       colorScheme: theme,
       ...getThemeConfig(theme),
     },
+    // Start screen config (greeting & prompts)
     startScreen: {
       greeting: GREETING,
       prompts: STARTER_PROMPTS,
@@ -328,7 +331,101 @@ export function ChatKitPanel({
       // Thus, your app code doesn't need to display errors on UI.
       console.error("ChatKit error", error);
     },
-  });
+  };
+
+  const chatkit = useChatKit(chatkitOptions);
+
+  // If enabled, observe the ChatKit DOM and hide short/interim streaming
+  // nodes (ellipses, short punctuation-only fragments). We un-hide when a
+  // longer final message appears. This is best-effort and conservative.
+  useEffect(() => {
+    if (!isBrowser) return;
+    if (!HIDE_INTERIM_RESPONSES) return;
+
+    const root = document.querySelector("openai-chatkit") as HTMLElement | null;
+    if (!root) return;
+
+    const suppressed = new Map<Element, number>();
+    const interimRegex = /^([.\s\u2026]+|\.{1,3}|…+)$/;
+
+    function evaluateElement(el: Element) {
+      const text = (el.textContent ?? "").trim();
+      if (!text) return;
+
+      const hasLetters = /[A-Za-z\p{L}]/u.test(text);
+      const isInterim = interimRegex.test(text) || (!hasLetters && text.length <= 6);
+
+      if (isInterim) {
+        // hide it
+        if (el instanceof HTMLElement) {
+          el.dataset.__suppressed = "1";
+          el.style.setProperty("display", "none", "important");
+          // track timestamp
+          suppressed.set(el, Date.now());
+        }
+      } else {
+        // consider this final: unhide parent chain if previously suppressed
+        let node: Element | null = el;
+        while (node && node !== root) {
+          if (node instanceof HTMLElement && node.dataset.__suppressed) {
+            node.style.removeProperty("display");
+            delete node.dataset.__suppressed;
+            suppressed.delete(node);
+          }
+          node = node.parentElement;
+        }
+      }
+    }
+
+    const observer = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        if (m.type === "characterData") {
+          const parent = (m.target as CharacterData).parentElement;
+          if (parent) evaluateElement(parent);
+        }
+        for (const n of Array.from(m.addedNodes)) {
+          if (n.nodeType === Node.TEXT_NODE) {
+            const parent = (n as CharacterData).parentElement;
+            if (parent) evaluateElement(parent);
+            continue;
+          }
+          if (n.nodeType === Node.ELEMENT_NODE) {
+            const el = n as Element;
+            evaluateElement(el);
+            // also scan its children quickly
+            for (const child of Array.from(el.querySelectorAll("*"))) {
+              evaluateElement(child as Element);
+            }
+          }
+        }
+      }
+    });
+
+    observer.observe(root, { childList: true, subtree: true, characterData: true });
+
+    // Periodic cleanup: unhide any elements that have been suppressed for >5s
+    const interval = window.setInterval(() => {
+      const now = Date.now();
+      suppressed.forEach((ts, el) => {
+        if (now - ts > 5000) {
+          try {
+            if (el instanceof HTMLElement) {
+              el.style.removeProperty("display");
+              delete el.dataset.__suppressed;
+            }
+            suppressed.delete(el);
+          } catch {
+            suppressed.delete(el);
+          }
+        }
+      });
+    }, 2000);
+
+    return () => {
+      observer.disconnect();
+      window.clearInterval(interval);
+    };
+  }, [chatkit.control]);
 
   const activeError = errors.session ?? errors.integration;
   const blockingError = errors.script ?? activeError;

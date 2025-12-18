@@ -69,3 +69,79 @@ Before deploying your app, you need to verify the domain by adding it to the [Do
 
 - [ChatKit JavaScript Library](http://openai.github.io/chatkit-js/)
 - [Advanced Self-Hosting Examples](https://github.com/openai/openai-chatkit-advanced-samples)
+
+## Modifying Introduction
+
+The starter app's opening greeting was customized as part of recent edits. Summary of what was changed and why:
+
+- **Greeting text**: updated the start-screen greeting to "Hi, I am Sean's Digital Avatar, how can I help you today?" by changing the constant in `lib/config.ts`.
+
+- **Attempted non-streaming responses**: I initially tried to request non-streaming assistant responses by forwarding a `response_streaming` flag. The ChatKit client and upstream session API rejected that parameter, so I removed the unsupported parameter to avoid runtime errors.
+
+- **Files changed**:
+  - `lib/config.ts` — greeting text updated.
+  - `components/ChatKitPanel.tsx` — removed unsupported `response_streaming` parameter from the client request; organized `chatkit` options and preserved start-screen configuration.
+
+- **How to test**:
+
+	1. Ensure your `.env.local` is configured with `NEXT_PUBLIC_CHATKIT_WORKFLOW_ID` and `OPENAI_API_KEY`.
+	2. Run the dev server:
+
+```bash
+npm run dev
+```
+
+	3. Visit `http://localhost:3000` and confirm the greeting appears on the start screen and that there are no runtime console errors about unknown session parameters.
+
+- **If you want final-only responses**: some ChatKit deployments may support a different session flag or require server-side configuration. If you want, I can:
+	- Log the upstream `create-session` response to inspect accepted session flags, or
+	- Add a UI-level filter to hide interim deltas when they appear.
+
+If you'd like me to revert these edits to the original repository state at any time, say "revert to original" and I will restore the original files.
+
+## Development Notes
+
+Short summary of the current development state and helpful tips for testing or reverting changes.
+
+- **Current working changes**:
+	- `lib/config.ts` — start-screen greeting updated; added `HIDE_INTERIM_RESPONSES` flag (default `true`).
+	- `components/ChatKitPanel.tsx` — best-effort UI filter added to hide interim/streaming assistant fragments; fixed an iteration bug by using a `Map` for bookkeeping.
+	- `README.md` — documentation of modifications and testing steps (this file).
+
+- **Where backups live**: I created safe local backups before edits in `dev-backups/`:
+	- `dev-backups/config.ts.bak`
+	- `dev-backups/ChatKitPanel.tsx.bak`
+	- `dev-backups/README.md.bak`
+
+- **Toggle the interim-response filter**: to quickly disable the UI-level hiding behavior, set the flag in `lib/config.ts`:
+
+```ts
+// in lib/config.ts
+export const HIDE_INTERIM_RESPONSES = false;
+```
+
+- **How to revert to backups manually**:
+
+```bash
+cp dev-backups/config.ts.bak lib/config.ts
+cp dev-backups/ChatKitPanel.tsx.bak components/ChatKitPanel.tsx
+cp dev-backups/README.md.bak README.md
+```
+
+- **How to revert using git** (if you prefer):
+
+```bash
+git checkout -- lib/config.ts components/ChatKitPanel.tsx README.md
+```
+
+- **Testing notes**:
+	1. Start the dev server: `npm run dev` and open `http://localhost:3000`.
+	2. Open your browser DevTools Console (Cmd+Option+I on macOS) and enable "Preserve log".
+	3. Ask a question that typically produces streaming/partial assistant output and observe whether interim fragments are hidden and only the final response appears.
+	4. If something looks wrong, set `HIDE_INTERIM_RESPONSES = false` and reload to restore original rendering.
+
+- **Known runtime caveats**:
+	- A prior runtime error `suppressed.forEach is not a function` was fixed by switching from `WeakMap` to `Map` for suppressed element bookkeeping.
+	- You may still see React developer warnings or errors in the console (minified messages such as React error #185). If they appear, copy the full console output (preferably in non-minified dev mode) and share it so I can diagnose further.
+
+If you'd like any of these items committed to a new branch, or prefer I create a Git commit with the changes and a short message, tell me and I'll do it before we finish.

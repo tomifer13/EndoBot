@@ -15,7 +15,13 @@ export const STARTER_PROMPTS: StartScreenPrompt[] = [
 
 export const PLACEHOLDER_INPUT = "Ask anything...";
 
-export const GREETING = "How can I help you today?";
+export const GREETING = "Hi, I am Sean's Digital Avatar, how can I help you today?";
+
+// When true, the UI will try to hide interim/streaming assistant partials
+// (the "thinking" updates) and only show final assistant messages. This
+// is best-effort: different ChatKit deployments render streaming updates
+// differently, so behavior may vary. Toggle to `false` to disable.
+export const HIDE_INTERIM_RESPONSES = true;
 
 export const getThemeConfig = (theme: ColorScheme): ThemeOption => ({
   color: {
