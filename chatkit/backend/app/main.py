@@ -37,23 +37,15 @@ async def verify_endpoint() -> JSONResponse:
         }
     )
 
+from typing import Any
 
 @app.post("/__debug/chatkit")
-async def debug_chatkit(request: Request) -> JSONResponse:
+async def debug_chatkit(body: dict[str, Any]) -> JSONResponse:
     """
     Endpoint temporário pra inspecionar o payload do ChatKit sem curl.
     Acesse /docs -> POST /__debug/chatkit.
     """
-    try:
-        body = await request.json()
-    except Exception:
-        raw = await request.body()
-        return JSONResponse(
-            {"mark": "DEBUG_OK", "received_raw": raw.decode("utf-8", errors="replace")}
-        )
-
     return JSONResponse({"mark": "DEBUG_OK", "received": body})
-
 
 @app.post("/chatkit")
 async def chatkit_endpoint(request: Request) -> Response:
