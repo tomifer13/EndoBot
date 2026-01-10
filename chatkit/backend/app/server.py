@@ -1,9 +1,8 @@
-"""ChatKit server that streams responses from an Agent Builder workflow."""
+"""ChatKit server that calls an Agent Builder workflow and returns a normal response."""
 
 from __future__ import annotations
 
 import os
-import json
 from typing import Any, AsyncIterator
 
 import httpx
@@ -29,8 +28,6 @@ WORKFLOW_VERSION = os.getenv("OPENAI_WORKFLOW_VERSION", "").strip()  # "2"
 
 
 class StarterChatServer(ChatKitServer[dict[str, Any]]):
-    """Server implementation that keeps conversation state in memory."""
-
     def __init__(self) -> None:
         self.store: MemoryStore = MemoryStore()
         super().__init__(self.store)
@@ -41,7 +38,7 @@ class StarterChatServer(ChatKitServer[dict[str, Any]]):
         item: UserMessageItem | None,
         context: dict[str, Any],
     ) -> AsyncIterator[ThreadStreamEvent]:
-        # Load recent items and extract the latest user message as text
+        # Load conversation and extract latest user text
         items_page = await self.store.load_thread_items(
             thread.id,
             after=None,
@@ -52,25 +49,19 @@ class StarterChatServer(ChatKitServer[dict[str, Any]]):
         items = list(reversed(items_page.data))
         agent_input = await simple_to_agent_input(items)
 
-        # Best-effort: grab the latest user text from agent_input
         user_text = ""
         if isinstance(agent_input, list) and agent_input:
             last = agent_input[-1]
             if isinstance(last, dict):
-                user_text = (
-                    last.get("content")
-                    or last.get("text")
-                    or ""
-                )
+                user_text = last.get("content") or last.get("text") or ""
 
         if not user_text:
             user_text = "Olá! Pode enviar sua dúvida."
 
-        # Build Responses API payload to run the workflow
         payload: dict[str, Any] = {
             "workflow": WORKFLOW_ID,
             "input": user_text,
-            "stream": True,
+            "stream": False,  # IMPORTANT: disable stream to avoid ChatKit event format issues
         }
         if WORKFLOW_VERSION:
             payload["version"] = WORKFLOW_VERSION
@@ -80,61 +71,44 @@ class StarterChatServer(ChatKitServer[dict[str, Any]]):
             "Content-Type": "application/json",
         }
 
-        agent_context = AgentContext(
-            thread=thread,
-            store=self.store,
-            request_context=context,
-        )
-
-        # Helper: yield ChatKit events
-        async def _yield_text(text: str) -> AsyncIterator[ThreadStreamEvent]:
-            # Minimal ChatKit-compatible streaming event:
-            # We emit "assistant_message_delta" style events via the store helpers.
-            # ChatKit expects ThreadStreamEvent objects; simplest is to use store.append/emit pattern.
-            # However, ChatKit provides a generic "message delta" event type in chatkit.types.
-            from chatkit.types import AssistantMessageDeltaEvent
-
-            yield AssistantMessageDeltaEvent(delta=text)
-
-        # Stream SSE from Responses API and emit deltas
-        async with httpx.AsyncClient(timeout=None) as client:
-            async with client.stream(
-                "POST",
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(
                 "https://api.openai.com/v1/responses",
                 headers=headers,
                 json=payload,
-            ) as resp:
-                resp.raise_for_status()
+            )
+            resp.raise_for_status()
+            data = resp.json()
 
-                async for line in resp.aiter_lines():
-                    if not line:
-                        continue
-                    if line.startswith("data: "):
-                        data = line[6:].strip()
-                    else:
-                        continue
+        # Extract text from Responses API output
+        text = ""
 
-                    if data == "[DONE]":
-                        break
+        # Common shape: output_text on top-level convenience
+        if isinstance(data, dict):
+            if "output_text" in data and isinstance(data["output_text"], str):
+                text = data["output_text"]
 
-                    # Each data line is JSON
-                    try:
-                        evt = json.loads(data)
-                    except Exception:
-                        continue
+            # Alternative: dig into output array
+            if not text:
+                output = data.get("output")
+                if isinstance(output, list):
+                    for item in output:
+                        if not isinstance(item, dict):
+                            continue
+                        content = item.get("content")
+                        if isinstance(content, list):
+                            for c in content:
+                                if isinstance(c, dict) and c.get("type") in ("output_text", "text"):
+                                    t = c.get("text")
+                                    if isinstance(t, str):
+                                        text += t
 
-                    # Extract text deltas from common Responses stream shapes
-                    # We handle a few patterns safely.
-                    text_delta = ""
+        if not text:
+            text = "Não consegui gerar uma resposta agora. Pode tentar novamente?"
 
-                    # Pattern A: output_text.delta
-                    if evt.get("type") == "output_text.delta":
-                        text_delta = evt.get("delta", "") or ""
-
-                    # Pattern B: response.output_text.delta (older wrappers)
-                    if not text_delta and "delta" in evt and isinstance(evt["delta"], str):
-                        text_delta = evt["delta"]
-
-                    if text_delta:
-                        async for e in _yield_text(text_delta):
-                            yield e
+        # Yield a single assistant message event the way ChatKit expects.
+        # This minimal dict event format is accepted by ChatKitServer.
+        yield {
+            "type": "assistant_message",
+            "content": [{"type": "text", "text": text}],
+        }
