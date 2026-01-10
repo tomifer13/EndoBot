@@ -22,6 +22,15 @@ app.add_middleware(
 chatkit_server = StarterChatServer()
 
 
+@app.get("/verify")
+async def verify_endpoint() -> JSONResponse:
+    """
+    Endpoint required by the ChatKit web component to validate backend reachability.
+    Must return 200.
+    """
+    return JSONResponse({"ok": True})
+
+
 @app.post("/chatkit")
 async def chatkit_endpoint(request: Request) -> Response:
     """Proxy the ChatKit web component payload to the server implementation."""
