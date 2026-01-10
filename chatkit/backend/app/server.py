@@ -8,6 +8,8 @@ from agents import Agent, Runner
 from chatkit.agents import AgentContext, simple_to_agent_input, stream_agent_response
 from chatkit.server import ChatKitServer
 from chatkit.types import ThreadMetadata, ThreadStreamEvent, UserMessageItem
+import inspect
+print("RUNNER_SIG:", inspect.signature(Runner.run_streamed))
 
 from .memory_store import MemoryStore
 
