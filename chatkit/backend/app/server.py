@@ -1,22 +1,18 @@
-# DEPLOY_MARK: 2026-01-10-1234
 """ChatKit server that streams responses from a single assistant."""
 
 from __future__ import annotations
 
 from typing import Any, AsyncIterator
 
-from agents import Runner
+from agents import Agent, Runner
 from chatkit.agents import AgentContext, simple_to_agent_input, stream_agent_response
 from chatkit.server import ChatKitServer
 from chatkit.types import ThreadMetadata, ThreadStreamEvent, UserMessageItem
 
 from .memory_store import MemoryStore
-from agents import Agent
-
 
 MAX_RECENT_ITEMS = 30
 MODEL = "gpt-4.1-mini"
-
 
 assistant_agent = Agent[AgentContext[dict[str, Any]]](
     model=MODEL,
