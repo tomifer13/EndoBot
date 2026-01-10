@@ -1,3 +1,4 @@
+# DEPLOY_MARK: 2026-01-10-1234
 """ChatKit server that streams responses from a single assistant."""
 
 from __future__ import annotations
