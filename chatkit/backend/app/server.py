@@ -1,9 +1,9 @@
-"""ChatKit server that calls an Agent Builder workflow and returns a normal response."""
+"""ChatKit server that calls an Agent Builder workflow and streams a compatible ChatKit response."""
 
 from __future__ import annotations
 
 import os
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, Callable
 
 import httpx
 from chatkit.agents import AgentContext, simple_to_agent_input
@@ -25,6 +25,45 @@ def _require_env(name: str) -> str:
 OPENAI_API_KEY = _require_env("OPENAI_API_KEY")
 WORKFLOW_ID = _require_env("OPENAI_WORKFLOW_ID")
 WORKFLOW_VERSION = os.getenv("OPENAI_WORKFLOW_VERSION", "").strip()  # "2"
+
+
+def _get_text_streamer() -> Callable[[AgentContext[Any], str], AsyncIterator[ThreadStreamEvent]]:
+    """
+    Returns a function that converts plain text into ChatKit ThreadStreamEvents.
+
+    We try a few known helper names across ChatKit versions.
+    """
+    # Newer/alternate helper names
+    candidates = [
+        ("chatkit.server", "stream_text_response"),
+        ("chatkit.server", "text_to_stream_events"),
+        ("chatkit.responses", "stream_text_response"),
+        ("chatkit.responses", "text_to_stream_events"),
+        ("chatkit.types", "text_to_stream_events"),
+    ]
+
+    for mod_name, fn_name in candidates:
+        try:
+            mod = __import__(mod_name, fromlist=[fn_name])
+            fn = getattr(mod, fn_name)
+            if callable(fn):
+                return fn  # type: ignore[return-value]
+        except Exception:
+            continue
+
+    # Fallback: minimal, but should still produce something.
+    async def _fallback(agent_context: AgentContext[Any], text: str) -> AsyncIterator[ThreadStreamEvent]:
+        # As a last resort, emit a single assistant message event.
+        # Some ChatKit versions accept this dict shape.
+        yield {
+            "type": "assistant_message",
+            "content": [{"type": "text", "text": text}],
+        }
+
+    return _fallback
+
+
+stream_text = _get_text_streamer()
 
 
 class StarterChatServer(ChatKitServer[dict[str, Any]]):
@@ -61,7 +100,7 @@ class StarterChatServer(ChatKitServer[dict[str, Any]]):
         payload: dict[str, Any] = {
             "workflow": WORKFLOW_ID,
             "input": user_text,
-            "stream": False,  # IMPORTANT: disable stream to avoid ChatKit event format issues
+            "stream": False,  # we convert to ChatKit events ourselves
         }
         if WORKFLOW_VERSION:
             payload["version"] = WORKFLOW_VERSION
@@ -82,23 +121,20 @@ class StarterChatServer(ChatKitServer[dict[str, Any]]):
 
         # Extract text from Responses API output
         text = ""
-
-        # Common shape: output_text on top-level convenience
         if isinstance(data, dict):
-            if "output_text" in data and isinstance(data["output_text"], str):
+            if isinstance(data.get("output_text"), str):
                 text = data["output_text"]
 
-            # Alternative: dig into output array
             if not text:
                 output = data.get("output")
                 if isinstance(output, list):
-                    for item in output:
-                        if not isinstance(item, dict):
+                    for out_item in output:
+                        if not isinstance(out_item, dict):
                             continue
-                        content = item.get("content")
+                        content = out_item.get("content")
                         if isinstance(content, list):
                             for c in content:
-                                if isinstance(c, dict) and c.get("type") in ("output_text", "text"):
+                                if isinstance(c, dict):
                                     t = c.get("text")
                                     if isinstance(t, str):
                                         text += t
@@ -106,9 +142,11 @@ class StarterChatServer(ChatKitServer[dict[str, Any]]):
         if not text:
             text = "Não consegui gerar uma resposta agora. Pode tentar novamente?"
 
-        # Yield a single assistant message event the way ChatKit expects.
-        # This minimal dict event format is accepted by ChatKitServer.
-        yield {
-            "type": "assistant_message",
-            "content": [{"type": "text", "text": text}],
-        }
+        agent_context = AgentContext(
+            thread=thread,
+            store=self.store,
+            request_context=context,
+        )
+
+        async for evt in stream_text(agent_context, text):
+            yield evt
