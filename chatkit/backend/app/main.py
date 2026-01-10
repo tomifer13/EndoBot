@@ -21,14 +21,17 @@ app.add_middleware(
 
 chatkit_server = StarterChatServer()
 
-
 @app.get("/verify")
 async def verify_endpoint() -> JSONResponse:
     import inspect
     from agents import Runner
 
     return JSONResponse(
-        {"ok": True, "runner_sig": str(inspect.signature(Runner.run_streamed))}
+        {
+            "ok": True,
+            "mark": "VERIFY_V2_1418",
+            "runner_sig": str(inspect.signature(Runner.run_streamed)),
+        }
     )
 
 @app.post("/chatkit")
