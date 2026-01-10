@@ -45,3 +45,19 @@ async def chatkit_endpoint(request: Request) -> Response:
     if hasattr(result, "json"):
         return Response(content=result.json, media_type="application/json")
     return JSONResponse(result)
+
+@app.post("/chatkit")
+async def chatkit_endpoint(request: Request) -> Response:
+    payload = await request.body()
+
+    # 🔎 marcador rápido: prova que este handler está sendo chamado
+    if request.headers.get("x-debug-chatkit") == "1":
+        return JSONResponse({"mark": "CHATKIT_HANDLER_OK", "len": len(payload)})
+
+    result = await chatkit_server.process(payload, {"request": request})
+
+    if isinstance(result, StreamingResult):
+        return StreamingResponse(result, media_type="text/event-stream")
+    if hasattr(result, "json"):
+        return Response(content=result.json, media_type="application/json")
+    return JSONResponse(result)
