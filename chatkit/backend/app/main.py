@@ -24,12 +24,12 @@ chatkit_server = StarterChatServer()
 
 @app.get("/verify")
 async def verify_endpoint() -> JSONResponse:
-    """
-    Endpoint required by the ChatKit web component to validate backend reachability.
-    Must return 200.
-    """
-    return JSONResponse({"ok": True})
+    import inspect
+    from agents import Runner
 
+    return JSONResponse(
+        {"ok": True, "runner_sig": str(inspect.signature(Runner.run_streamed))}
+    )
 
 @app.post("/chatkit")
 async def chatkit_endpoint(request: Request) -> Response:
