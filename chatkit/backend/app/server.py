@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from typing import Any, AsyncIterator
 
-from agents import Agent, Runner
+from agents import Runner
 from chatkit.agents import AgentContext, simple_to_agent_input, stream_agent_response
 from chatkit.server import ChatKitServer
 from chatkit.types import ThreadMetadata, ThreadStreamEvent, UserMessageItem
@@ -22,24 +22,8 @@ def _require_env(name: str) -> str:
     return value
 
 
-# Required: workflow created in the OpenAI Agent Builder
 WORKFLOW_ID = _require_env("OPENAI_WORKFLOW_ID")
-
-# Optional: pin the workflow version (recommended if you’re using versioned builder releases)
-# If you leave this empty, it will use the default production version.
-WORKFLOW_VERSION = os.getenv("OPENAI_WORKFLOW_VERSION", "").strip()
-
-# IMPORTANT:
-# This Agent points to the Agent Builder workflow instead of using a local model+instructions.
-# The workflow itself contains Guardrails/Classify/File Search/Transform/agents, etc.
-workflow_agent = Agent[AgentContext[dict[str, Any]]](
-    # In the Agents SDK, you can reference a Builder workflow by its workflow id.
-    # The exact field name is "workflow" in this starter pattern.
-    workflow=WORKFLOW_ID,
-    # Pin version when provided (your Builder shows version="2")
-    version=WORKFLOW_VERSION or None,
-    name="Josi.IA",
-)
+WORKFLOW_VERSION = os.getenv("OPENAI_WORKFLOW_VERSION", "").strip()  # ex: "2" (opcional)
 
 
 class StarterChatServer(ChatKitServer[dict[str, Any]]):
@@ -71,11 +55,21 @@ class StarterChatServer(ChatKitServer[dict[str, Any]]):
             request_context=context,
         )
 
-        result = Runner.run_streamed(
-            workflow_agent,
-            agent_input,
-            context=agent_context,
-        )
+        # Run the Agent Builder workflow (instead of a local hardcoded assistant)
+        # NOTE: Runner API differs by version; this form is compatible with the common starter setup.
+        if WORKFLOW_VERSION:
+            result = Runner.run_streamed(
+                workflow_id=WORKFLOW_ID,
+                version=WORKFLOW_VERSION,
+                input=agent_input,
+                context=agent_context,
+            )
+        else:
+            result = Runner.run_streamed(
+                workflow_id=WORKFLOW_ID,
+                input=agent_input,
+                context=agent_context,
+            )
 
         async for event in stream_agent_response(agent_context, result):
             yield event
