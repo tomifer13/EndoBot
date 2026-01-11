@@ -26,6 +26,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
+    // ✅ user must be provided by the client
+    const bodyIn = (req.body ?? {}) as any;
+    const user = bodyIn?.user;
+
+    if (!user || typeof user !== "string") {
+      res.status(400).json({
+        error: "Missing required field 'user' (string). Send it in POST body: { user: '...' }",
+      });
+      return;
+    }
+
     const workflowVersion = workflowVersionRaw
       ? Number(workflowVersionRaw)
       : undefined;
@@ -38,6 +49,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         "OpenAI-Beta": "chatkit_beta=v1",
       },
       body: JSON.stringify({
+        user,
         workflow: {
           id: workflowId,
           version: workflowVersion,
@@ -48,7 +60,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const contentType = resp.headers.get("content-type") || "";
     const raw = await resp.text();
 
-    // Tenta devolver JSON bonitinho se vier JSON; senão devolve texto.
     if (contentType.includes("application/json")) {
       try {
         res.status(resp.status).json(JSON.parse(raw));
