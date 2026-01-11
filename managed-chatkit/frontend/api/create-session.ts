@@ -1,21 +1,12 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
-function parseJsonBody(req: VercelRequest): any {
-  const b: any = (req as any).body;
+type CreateSessionBody = {
+  workflow?: { id?: string; version?: number };
+  user?: string;
+};
 
-  // If Vercel parsed it already
-  if (b && typeof b === "object") return b;
-
-  // If it came as a JSON string
-  if (typeof b === "string" && b.trim()) {
-    try {
-      return JSON.parse(b);
-    } catch {
-      return {};
-    }
-  }
-
-  return {};
+function readEnvString(v: unknown): string | undefined {
+  return typeof v === "string" && v.trim() ? v.trim() : undefined;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -25,40 +16,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = readEnvString(process.env.OPENAI_API_KEY);
+    const fallbackWorkflowId =
+      readEnvString(process.env.OPENAI_WORKFLOW_ID) ||
+      readEnvString(process.env.VITE_CHATKIT_WORKFLOW_ID);
 
-    const workflowId =
-      process.env.OPENAI_WORKFLOW_ID || process.env.VITE_CHATKIT_WORKFLOW_ID;
-
-    const workflowVersionRaw =
-      process.env.OPENAI_WORKFLOW_VERSION ||
-      process.env.VITE_CHATKIT_WORKFLOW_VERSION;
+    const fallbackWorkflowVersionRaw =
+      readEnvString(process.env.OPENAI_WORKFLOW_VERSION) ||
+      readEnvString(process.env.VITE_CHATKIT_WORKFLOW_VERSION);
 
     if (!apiKey) {
       res.status(500).json({ error: "Missing OPENAI_API_KEY" });
       return;
     }
 
+    const body = (req.body ?? {}) as CreateSessionBody;
+
+    // Workflow (prefer body, fallback to env)
+    const workflowId = body.workflow?.id ?? fallbackWorkflowId;
+    const workflowVersion =
+      typeof body.workflow?.version === "number"
+        ? body.workflow.version
+        : fallbackWorkflowVersionRaw
+          ? Number(fallbackWorkflowVersionRaw)
+          : undefined;
+
     if (!workflowId) {
-      res.status(500).json({ error: "Missing workflow id" });
-      return;
-    }
-
-    const bodyIn = parseJsonBody(req);
-    const user = bodyIn?.user;
-
-    if (!user || typeof user !== "string") {
       res.status(400).json({
         error:
-          "Missing required field 'user' (string). Send it in POST body: { user: '...' }",
-        debug_body_type: typeof (req as any).body,
+          "Missing required field 'workflow.id'. Send it in POST body: { workflow: { id: 'wf_...' } }",
       });
       return;
     }
 
-    const workflowVersion = workflowVersionRaw
-      ? Number(workflowVersionRaw)
-      : undefined;
+    // User (prefer body, else generate a fallback)
+    const user =
+      readEnvString(body.user) ??
+      // fallback: stable-ish per device isn't possible server-side;
+      // this is a last-resort to unblock (frontend SHOULD send user).
+      `anon_${Math.random().toString(36).slice(2)}_${Date.now()}`;
 
     const resp = await fetch("https://api.openai.com/v1/chatkit/sessions", {
       method: "POST",
@@ -68,27 +64,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         "OpenAI-Beta": "chatkit_beta=v1",
       },
       body: JSON.stringify({
-        user,
+        user, // ✅ REQUIRED
         workflow: {
-          id: workflowId,
-          version: workflowVersion,
+          id: workflowId, // ✅ REQUIRED
+          ...(Number.isFinite(workflowVersion) ? { version: workflowVersion } : {}),
         },
       }),
     });
 
-    const contentType = resp.headers.get("content-type") || "";
-    const raw = await resp.text();
-
-    if (contentType.includes("application/json")) {
-      try {
-        res.status(resp.status).json(JSON.parse(raw));
-        return;
-      } catch {
-        // fall through
-      }
-    }
-
-    res.status(resp.status).send(raw);
+    const text = await resp.text();
+    res.status(resp.status).send(text);
   } catch (err: any) {
     res.status(500).json({ error: err?.message || "Unknown error" });
   }
