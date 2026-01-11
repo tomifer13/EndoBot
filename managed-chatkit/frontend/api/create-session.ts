@@ -1,5 +1,23 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
+function parseJsonBody(req: VercelRequest): any {
+  const b: any = (req as any).body;
+
+  // If Vercel parsed it already
+  if (b && typeof b === "object") return b;
+
+  // If it came as a JSON string
+  if (typeof b === "string" && b.trim()) {
+    try {
+      return JSON.parse(b);
+    } catch {
+      return {};
+    }
+  }
+
+  return {};
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     if (req.method !== "POST") {
@@ -26,13 +44,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
-    // ✅ user must be provided by the client
-    const bodyIn = (req.body ?? {}) as any;
+    const bodyIn = parseJsonBody(req);
     const user = bodyIn?.user;
 
     if (!user || typeof user !== "string") {
       res.status(400).json({
-        error: "Missing required field 'user' (string). Send it in POST body: { user: '...' }",
+        error:
+          "Missing required field 'user' (string). Send it in POST body: { user: '...' }",
+        debug_body_type: typeof (req as any).body,
       });
       return;
     }
