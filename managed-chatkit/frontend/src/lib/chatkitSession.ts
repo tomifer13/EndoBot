@@ -9,6 +9,20 @@ export const workflowId = (() => {
   return id;
 })();
 
+function getOrCreateUserId(): string {
+  const key = "chatkit_user_id";
+  let userId = localStorage.getItem(key);
+  if (!userId) {
+    userId =
+      "user_" +
+      Math.random().toString(36).slice(2) +
+      "_" +
+      Date.now().toString(36);
+    localStorage.setItem(key, userId);
+  }
+  return userId;
+}
+
 export function createClientSecretFetcher(
   workflow: string,
   endpoint = "/api/create-session"
@@ -16,10 +30,15 @@ export function createClientSecretFetcher(
   return async (currentSecret: string | null) => {
     if (currentSecret) return currentSecret;
 
+    const userId = getOrCreateUserId();
+
     const response = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ workflow: { id: workflow } }),
+      body: JSON.stringify({
+        user: userId, // ✅ required by ChatKit sessions API
+        workflow: { id: workflow }, // mantém compatibilidade
+      }),
     });
 
     const payload = (await response.json().catch(() => ({}))) as {
