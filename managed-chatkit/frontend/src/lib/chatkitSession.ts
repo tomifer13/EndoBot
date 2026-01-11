@@ -10,17 +10,18 @@ export const workflowId = (() => {
 })();
 
 function getOrCreateUserId(): string {
-  const key = "chatkit_user_id";
-  let userId = localStorage.getItem(key);
-  if (!userId) {
-    userId =
-      "user_" +
-      Math.random().toString(36).slice(2) +
-      "_" +
-      Date.now().toString(36);
-    localStorage.setItem(key, userId);
+  try {
+    const key = "chatkit_user_id";
+    const existing = localStorage.getItem(key);
+    if (existing && existing.trim()) return existing;
+
+    const created = `user_${crypto.randomUUID()}`;
+    localStorage.setItem(key, created);
+    return created;
+  } catch {
+    // fallback (private mode / blocked storage)
+    return `user_${Math.random().toString(36).slice(2)}_${Date.now()}`;
   }
-  return userId;
 }
 
 export function createClientSecretFetcher(
@@ -30,14 +31,14 @@ export function createClientSecretFetcher(
   return async (currentSecret: string | null) => {
     if (currentSecret) return currentSecret;
 
-    const userId = getOrCreateUserId();
+    const user = getOrCreateUserId();
 
     const response = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        user: userId, // ✅ required by ChatKit sessions API
-        workflow: { id: workflow }, // mantém compatibilidade
+        user,
+        workflow: { id: workflow },
       }),
     });
 
