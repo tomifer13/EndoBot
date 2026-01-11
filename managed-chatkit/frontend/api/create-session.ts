@@ -1,12 +1,18 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
 type CreateSessionBody = {
-  workflow?: { id?: string; version?: string }; // ✅ version deve ser string
+  workflow?: { id?: string; version?: string | number };
   user?: string;
 };
 
 function readEnvString(v: unknown): string | undefined {
   return typeof v === "string" && v.trim() ? v.trim() : undefined;
+}
+
+function coerceVersionToString(v: unknown): string | undefined {
+  if (typeof v === "string" && v.trim()) return v.trim();
+  if (typeof v === "number" && Number.isFinite(v)) return String(v);
+  return undefined;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -17,16 +23,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const apiKey = readEnvString(process.env.OPENAI_API_KEY);
-
-    const fallbackWorkflowId =
-      readEnvString(process.env.OPENAI_WORKFLOW_ID) ||
-      readEnvString(process.env.VITE_CHATKIT_WORKFLOW_ID);
-
-    // ✅ manter como string (NÃO converter para Number)
-    const fallbackWorkflowVersion =
-      readEnvString(process.env.OPENAI_WORKFLOW_VERSION) ||
-      readEnvString(process.env.VITE_CHATKIT_WORKFLOW_VERSION);
-
     if (!apiKey) {
       res.status(500).json({ error: "Missing OPENAI_API_KEY" });
       return;
@@ -34,12 +30,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const body = (req.body ?? {}) as CreateSessionBody;
 
-    // Workflow (prefer body, fallback to env)
-    const workflowId = readEnvString(body.workflow?.id) ?? fallbackWorkflowId;
-
-    // ✅ version como string
-    const workflowVersion =
-      readEnvString(body.workflow?.version) ?? fallbackWorkflowVersion;
+    // workflow.id: prefer body, fallback to env
+    const workflowId =
+      readEnvString(body.workflow?.id) ||
+      readEnvString(process.env.OPENAI_WORKFLOW_ID) ||
+      readEnvString(process.env.VITE_CHATKIT_WORKFLOW_ID);
 
     if (!workflowId) {
       res.status(400).json({
@@ -49,11 +44,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
-    // User (prefer body, else generate a fallback)
-    // ⚠️ ideal: o frontend enviar um user estável (ex: userId do seu sistema).
+    // workflow.version MUST be a string for this endpoint (per your error)
+    const workflowVersion =
+      coerceVersionToString(body.workflow?.version) ||
+      readEnvString(process.env.OPENAI_WORKFLOW_VERSION) ||
+      readEnvString(process.env.VITE_CHATKIT_WORKFLOW_VERSION);
+
+    // user: prefer body; if missing, generate a stable-ish one from request headers.
+    // (Frontend SHOULD send it; this fallback is only to keep it working.)
     const user =
-      readEnvString(body.user) ??
-      `anon_${Math.random().toString(36).slice(2)}_${Date.now()}`;
+      readEnvString(body.user) ||
+      readEnvString(req.headers["x-chatkit-user"]) ||
+      `anon_${(req.headers["x-forwarded-for"] ?? "na")
+        .toString()
+        .split(",")[0]
+        .trim()}_${Date.now()}`;
 
     const resp = await fetch("https://api.openai.com/v1/chatkit/sessions", {
       method: "POST",
@@ -63,9 +68,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         "OpenAI-Beta": "chatkit_beta=v1",
       },
       body: JSON.stringify({
-        user, // ✅ REQUIRED
+        user, // REQUIRED
         workflow: {
-          id: workflowId, // ✅ REQUIRED
+          id: workflowId, // REQUIRED
           ...(workflowVersion ? { version: workflowVersion } : {}),
         },
       }),
