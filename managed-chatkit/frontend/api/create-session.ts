@@ -25,9 +25,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const resp = await fetch("https://api.openai.com/v1/chatkit/sessions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
+  Authorization: `Bearer ${apiKey}`,
+  "Content-Type": "application/json",
+  "OpenAI-Beta": "chatkit_beta=v1",
+},
       body: JSON.stringify({
         workflow_id: workflowId,
         workflow_version: workflowVersion ? Number(workflowVersion) : undefined,
