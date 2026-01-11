@@ -50,8 +50,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       readEnvString(process.env.OPENAI_WORKFLOW_VERSION) ||
       readEnvString(process.env.VITE_CHATKIT_WORKFLOW_VERSION);
 
-    // user: prefer body; if missing, generate a stable-ish one from request headers.
-    // (Frontend SHOULD send it; this fallback is only to keep it working.)
+    // user: prefer body; if missing, generate a fallback (frontend SHOULD send it)
     const user =
       readEnvString(body.user) ||
       readEnvString(req.headers["x-chatkit-user"]) ||
@@ -68,9 +67,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         "OpenAI-Beta": "chatkit_beta=v1",
       },
       body: JSON.stringify({
-        user, // REQUIRED
+        user,
         workflow: {
-          id: workflowId, // REQUIRED
+          id: workflowId,
           ...(workflowVersion ? { version: workflowVersion } : {}),
         },
       }),

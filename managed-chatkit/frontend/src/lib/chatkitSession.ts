@@ -13,12 +13,24 @@ const workflowVersion = readEnvString(import.meta.env.VITE_CHATKIT_WORKFLOW_VERS
 
 function getOrCreateUserId(): string {
   const key = "chatkit_user_id";
-  const existing = typeof window !== "undefined" ? window.localStorage.getItem(key) : null;
-  if (existing && existing.trim()) return existing;
 
-  const created = `user_${crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)}`
-  if (typeof window !== "undefined") window.localStorage.setItem(key, created);
-  return created;
+  try {
+    // localStorage pode falhar em private mode / bloqueios
+    const existing = localStorage.getItem(key);
+    if (existing && existing.trim()) return existing;
+
+    const uuid =
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `${Math.random().toString(36).slice(2)}_${Date.now()}`;
+
+    const created = `user_${uuid}`;
+    localStorage.setItem(key, created);
+    return created;
+  } catch {
+    // fallback (private mode / blocked storage)
+    return `user_${Math.random().toString(36).slice(2)}_${Date.now()}`;
+  }
 }
 
 export function createClientSecretFetcher(
