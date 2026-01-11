@@ -9,18 +9,16 @@ export const workflowId = (() => {
   return id;
 })();
 
+const workflowVersion = readEnvString(import.meta.env.VITE_CHATKIT_WORKFLOW_VERSION);
+
 function getOrCreateUserId(): string {
   const key = "chatkit_user_id";
-  let userId = localStorage.getItem(key);
-  if (!userId) {
-    userId =
-      "user_" +
-      Math.random().toString(36).slice(2) +
-      "_" +
-      Date.now().toString(36);
-    localStorage.setItem(key, userId);
-  }
-  return userId;
+  const existing = typeof window !== "undefined" ? window.localStorage.getItem(key) : null;
+  if (existing && existing.trim()) return existing;
+
+  const created = `user_${crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)}`
+  if (typeof window !== "undefined") window.localStorage.setItem(key, created);
+  return created;
 }
 
 export function createClientSecretFetcher(
@@ -30,14 +28,17 @@ export function createClientSecretFetcher(
   return async (currentSecret: string | null) => {
     if (currentSecret) return currentSecret;
 
-    const userId = getOrCreateUserId();
+    const user = getOrCreateUserId();
 
     const response = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        user: userId, // ✅ required by ChatKit sessions API
-        workflow: { id: workflow }, // mantém compatibilidade
+        user,
+        workflow: {
+          id: workflow,
+          ...(workflowVersion ? { version: workflowVersion } : {}),
+        },
       }),
     });
 
