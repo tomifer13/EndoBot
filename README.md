@@ -54,11 +54,31 @@ Visit `http://localhost:3000` and start chatting. Use the prompts on the start s
 
 ### 5. Deploy your app
 
+**⚠️ IMPORTANT: Domain Verification Required for Production**
+
+Before deploying your app to production, you **must** register your production domain with OpenAI ChatKit. This is required to prevent the `DomainVerificationRequestError: Domain verification request failed with 401` error.
+
+1. **Add your domain to the allowlist:**
+
+   - Go to [Domain Allowlist Settings](https://platform.openai.com/settings/organization/security/domain-allowlist)
+   - Add your production domain (e.g., `yourdomain.com` or `app.yourdomain.com`)
+   - Wait a few minutes for the change to propagate
+
+2. **Set production environment variables:**
+
+   - Ensure `OPENAI_API_KEY` is set in your production environment
+   - Ensure `NEXT_PUBLIC_CHATKIT_WORKFLOW_ID` is set in your production environment
+   - Both must be from the same OpenAI organization/project as your Agent Builder workflow
+
+> **Note:** When using `HostedApiConfig` (with `getClientSecret`), domain verification is handled automatically by OpenAI's servers when your domain is registered in the allowlist. The domain key (`domain_pk_...`) is only needed if you're using `CustomApiConfig` with a custom backend URL.
+
+3. **Build and deploy:**
+
 ```bash
 npm run build
 ```
 
-Before deploying your app, you need to verify the domain by adding it to the [Domain allowlist](https://platform.openai.com/settings/organization/security/domain-allowlist) on your dashboard.
+> **Note:** Domain verification is only required for production deployments. Local development (localhost) does not require domain verification.
 
 ## Customization Tips
 
